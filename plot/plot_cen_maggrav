@@ -1,0 +1,252 @@
+#! /bin/csh -f
+rm profile.txt
+#   plot_cen_maggrav:  window a region from the central US gravity and
+#                     magnetics database, plot
+
+if ($#argv != 7) then
+    echo "Usage:  $0 { minlong maxlong minlat maxlat datatype plotfile flag}"
+    echo "        minlong = minimum longitude (east is positive)"
+    echo "        maxlong = maximum longitude"
+    echo "        minlat  = minimum latitude (north is positive)"
+    echo "        maxlat  = maximum latitude"
+    echo "        datatype = 1, bouguer gravity anomaly"
+    echo "                 = 2, reduced to pole magnetic anomaly"
+    echo "                 = 3, total field magnetic anomaly"
+    echo "                 = 4, isostatic gravity anomaly"
+#cap
+    echo "                 = 5, detrend gravity anomaly"
+    echo "                 = 6,  1km upperward continuation"
+    echo "                 = 7,  1km downward continuation"
+    echo "                 = 8,  horizontal derivative"
+    echo "                 = 9,  vertical derivative"
+    echo "        plotfile = name of postscript plot file"
+    echo "        flag     = 1, no filtering or continuation"
+    exit
+endif
+#   set location of data files
+set GRAVDIR = /Users/Chunyu/Desktop/plot
+set MAGDIR = /Users/Chunyu/Desktop/plot
+if ( $5 < 1 && $5 > 3) then
+	echo "Use correct datatype"
+	exit
+endif
+
+if ( $5 == 1) then
+	set DATA = $GRAVDIR/completegravity.csv
+#        set DATA = SEUSLEgravinput
+#    set DATA = hotsprings_grav.formatted.txt
+	set title = Complete_Bouguer_Anomaly
+	set mygrd = cenboug
+	set unit = mgal
+	set step = 20
+	set zmin = -70
+	set zmax = 60
+	set legend_interval = 20
+endif
+if ( $5 == 2) then
+	set DATA = $MAGDIR/RTP.txt
+	set title = RTP Anomaly
+	set mygrd = cenrtpmag
+	set unit = nT
+	set zmin = -800
+	set zmax = 1500
+	set step = 200
+endif
+if ( $5 == 3) then
+	set DATA = $MAGDIR/magnetic_anomaly.csv
+	set title = Magnetic_Anomaly
+	set mygrd = centotmag
+	set unit = nT
+	set zmin = -800
+	set zmax = 1500
+	set step = 200
+endif
+if ( $5 == 4) then
+	set DATA = $GRAVDIR/isograv.xyz
+	set title = isostatic Anomaly
+	set mygrd = ceniso
+	set unit = mgal
+endif
+# cap
+if ( $5 == 5) then
+	set DATA = $GRAVDIR/detrend.txt
+	set title = detrend_magnetic Anomaly
+	set mygrd = cendetrendmag
+	set unit = nT
+	set zmin = -800
+	set zmax = 1500
+	set step = 200
+endif
+if ( $5 == 6) then
+        set DATA = $MAGDIR/up.txt
+        set title = Magnetic_Anomaly_up_1km
+        set mygrd = cenupmag
+	set unit = nT
+	set zmin = -300
+	set zmax = 300
+	set step = 50
+	set interval = 50
+endif
+if ( $5 == 7) then
+        set DATA = $MAGDIR/down.txt
+        set title = Magnetic_Anomaly_down_1km
+        set mygrd = cendownmag
+	set unit = nT
+endif
+if ( $5 == 8) then
+        set DATA = $MAGDIR/yderivative.txt
+        set title = Magnetic_Anomaly_y-firstorder_derivative
+        set mygrd = cenhorizontalmag
+	set unit = nT
+	set zmin = -10000
+	set zmax = 33000
+	set step = 2000
+endif
+if ( $5 == 9) then
+        set DATA = $MAGDIR/vertical.txt
+        set title = Magnetic_Anomaly_vertical_derivative
+        set mygrd = cenverticalmag
+	set unit = nT
+	set zmin = -10000
+	set zmax = 20000
+	set step = 2000
+endif
+
+#    Set .gmtdefaults file locally
+#gmtdefaults -Du  >  ~/.gmtdefaults
+#gmtset DEGREE_FORMAT 5
+
+# map corners
+set LONMIN = $1
+set LONMAX = $2
+set LATMIN = $3
+set LATMAX = $4
+
+#inches per degree
+#set SCALE = 3
+set SCALE = 3
+# used to center on page
+set XOFFSET = 2.5
+set YOFFSET = 3.0
+
+
+# plot orientation
+set ORIENT = -P
+
+# postscipt file goes here
+set OUTPUTFILE = $6.ps
+
+#resolution of gmt dataset
+set RESOL = -Df
+
+#standard switched for more to follow
+set CONTINUE = "-K -O"
+
+# type of map projection
+set PROJ = Jm
+
+# convert corners to a region
+set REGION = $LONMIN/$LONMAX/$LATMIN/$LATMAX
+
+# subsetted grid name
+#set mygrd = test
+
+# grid increment in degrees
+set xinc = .01
+set yinc = .01
+
+#    the next 2 need be run only the first time
+#    if you are busy changing map view stuff!
+#
+gmt blockmedian $DATA -I$xinc/$yinc -R$REGION   -Q -V >! $mygrd".xyz"
+gmt surface $mygrd".xyz" -G$mygrd".grd" -I$xinc/$yinc -R$REGION -T.25 -V 
+
+if ( $7 != 1 ) then
+	#    filter, upward/downward continuation if wanted
+	gmt grdfft $mygrd.grd -C-100 -M -L -G$mygrd.uc.grd
+	#grdfft $mygrd.grd -D10 -M -L -G$mygrd.uc.grd
+# second derivative
+	#grdfft $mygrd.grd -D -D -M -V -G$mygrd.uc.grd
+endif
+
+#    make the color table for the original data
+#awk '{print $3}' $mygrd.xyz >! $mygrd.1
+#gmt minmax -I1/1 -C $mygrd.1 >! $mygrd.minmax
+#@ zmin = `awk '{print $1}' $mygrd.minmax`
+#@ zmax = `awk '{print $2}' $mygrd.minmax`
+
+# gravity values
+#set zmin = -70
+#set zmax = 60
+gmt makecpt -Cjet -Z -T$zmin/$zmax/$step -V >! $mygrd".cpt"
+
+# magnetic values
+#set zmin = -800
+#set zmax = 1500
+#gmt makecpt -Crainbow -Z -T$zmin/$zmax/50 -V >! $mygrd".cpt"
+# upward continuation cpt 
+#set zmin = -300
+#set zmax = 300
+#gmt makecpt -Crainbow -Z -T$zmin/$zmax/50 -V >! $mygrd".cpt"
+#makecpt -Cno_green -Z -T$zmin/$zmax/10 -V >! $mygrd".cpt"
+#makecpt -Cgravity -Z -T$zmin/$zmax/10 -V >! $mygrd".cpt"
+# cpt made by Heather - gravity.cpt, magnetics.cpt
+
+# cap
+#makecpt -Crainbow -Z `minmax -T1 $mygrd.1` -V >! $mygrd".cpt"
+
+if ( $7 != 1 ) then
+	#    make the color table for the filtered data
+	gmt grd2xyz $mygrd.uc.grd >! $mygrd.uc.xyz
+	awk '{print $3}' $mygrd.uc.xyz >! $mygrd.uc.1
+	gmt minmax -I1/1 -C $mygrd.uc.1 >! $mygrd.uc.minmax
+	@ zmin1 = `awk '{print $1}' $mygrd.uc.minmax`
+	@ zmax1 = `awk '{print $2}' $mygrd.uc.minmax`
+	gmt makecpt -Crainbow -Z -T$zmin1/$zmax1/100 >! $mygrd".uc.cpt"
+endif
+
+
+if ( $7 == 1 ) then
+	set CONTINUE1 = "-O"
+	else
+	set CONTINUE1 = "-O -K"
+endif
+
+#grdimage $mygrd.grd -Cmagnetics.cpt -$PROJ$SCALE -R$REGION -V -K -X$XOFFSET -Y$YOFFSET >! $OUTPUTFILE
+gmt grdimage $mygrd.grd -C$mygrd.cpt -$PROJ$SCALE -R$REGION -V -K -X$XOFFSET -Y$YOFFSET -P >! $OUTPUTFILE
+gmt pscoast -$PROJ -Bf0.5a0.5:."$title": -R$REGION -Df -W -Ia -Na -V -O -K >> $OUTPUTFILE
+# cap
+
+################################################################################################
+##     warnning: if it is magnetic plot, change B20 to B200
+##
+################################################################################################
+gmt psscale -D8/-1.00/15.0/0.2h -B20:"$unit": -C$mygrd.cpt $CONTINUE1 -K -V  >> $OUTPUTFILE
+
+gmt psxy profile_line.txt -R -$PROJ -O -W1 -Sc0.2 -G255/255/255 -K >> $OUTPUTFILE
+gmt psxy profile_line.txt -R -$PROJ -O -W1 -K  >> $OUTPUTFILE
+##############################################################################################
+## change start and end : starting point and ending point  Format: longitude/latitude
+#############################################################################################
+set INCREMENT = 1
+set START = -88/35
+set END = -91/38
+gmt project -G$INCREMENT -Q -E$END -C$START -V >! slicecoords.xyz
+gmt grdtrack slicecoords.xyz -G$mygrd.grd -V >! slicevals.xyz
+awk '{ print $3, $4}' slicevals.xyz >! profile.txt
+##########################################################################################
+## change the tick if it is magnetic plot example B40:Distance:/200
+#########################################################################################
+set tick=-B40:Distance:/20:."$title":WSen
+awk '{print $1, $2}' profile.txt | gmt psxy -R0/440/$zmin/$zmax -JX15/5 $tick -W1  -Sc0.2 -G200 -O \
+-Y19 >> $OUTPUTFILE
+
+if ( $7 != 1 ) then
+ gmt grdimage $mygrd.uc.grd -C$mygrd.uc.cpt -X3.2 -$PROJ -R$REGION $CONTINUE -V >> $OUTPUTFILE
+ gmt pscoast -$PROJ -Bf1a2:"$title": -R$REGION -Df -Ia2/0/0/255 -Na -V $CONTINUE >> $OUTPUTFILE
+
+#   CAP write scale
+endif
+
+
+
